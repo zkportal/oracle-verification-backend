@@ -1,0 +1,12 @@
+{
+  "port": 8080,
+  "useTls": false,
+  "tlsKey": "key.pem",
+  "tlsCert": "cert.pem",
+  "uniqueIdTarget": "",
+  "liveCheck": {
+    "skip": false,
+    "apiBaseUrl": "https://api.explorer.aleo.org/v1/testnet3",
+    "contractName": "oracle.aleo"
+  }
+}

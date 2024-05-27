@@ -1,0 +1,5 @@
+*.pem
+oracle-verification-backend
+.vscode
+Dockerfile.source
+*.txt
