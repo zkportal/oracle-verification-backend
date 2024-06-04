@@ -4,7 +4,7 @@ At this moment the Aleo blockchain cannot natively verify our TEE report (SGX at
 for everyone to run and verify that each oracle update actualy carries a valid TEE report. This does not require the user to have a TEE themselves.
 As soon as Aleo is able to verify e.g. ECDSA signatures natively this will become superfluous.
 
-Intended to be run outside of an enclave. Use it with [Aleo Oracle JS SDK](https://github.com/zkportal/aleo-oracle-sdk-js) or [Aleo Oracle Go SDK](https://github.com/zkportal/aleo-oracle-sdk-go) to verify reports from the [notarization backend](https://github.com/zkportal/oracle-notarization-backend).
+Intended to be run outside of an enclave. Use it with [Oracle SDK](https://github.com/zkportal/oracle-sdk) to verify reports from the [notarization backend](https://github.com/zkportal/oracle-notarization-backend).
 
 This server requires [EGo](https://docs.edgeless.systems/ego/) and a [quote provider](https://docs.edgeless.systems/ego/reference/attest).
 
@@ -94,11 +94,12 @@ will itself run the script. The same environment variables can be passed to the 
 ### Aleo program's configured unique ID
 
 If the live check in the configuration is not skipped,
-his backend will query an Aleo node for the configured Aleo program and get the unique ID that the program uses for unique ID assertions on the enclave reports.
+this backend will query an Aleo node for the configured Aleo program and
+get the unique ID that the program uses for unique ID assertions on the enclave reports.
 
 The querying is done once at startup. If the obtained unique ID doesn't match the unique ID from the reproducible build, the backend will exit with an error.
 
-Use the configuration `liveCheck.skip` to skip it.
+Use the configuration `liveCheck.skip` to skip the unique ID check in the Aleo program.
 
 ## Configuration
 

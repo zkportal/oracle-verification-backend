@@ -1,0 +1,8 @@
+.vscode/
+*.pem
+Dockerfile
+Dockerfile.source
+.*md
+aleo-signer-go/target/
+aleo-signer-go/cmd/
+aleo-signer-go/*.js
