@@ -3,10 +3,10 @@
   "useTls": false,
   "tlsKey": "key.pem",
   "tlsCert": "cert.pem",
-  "uniqueIdTarget": "",
+  "uniqueIdTarget": "anFSoXzL+JMgfVI5DFplOMB2kqU01RJpopwqlKt7YQ4=",
   "liveCheck": {
     "skip": false,
-    "apiBaseUrl": "https://api.explorer.aleo.org/v1/testnet3",
+    "apiBaseUrl": "https://api.explorer.aleo.org/v1/testnet",
     "contractName": "oracle.aleo"
   }
 }
