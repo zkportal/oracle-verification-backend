@@ -3,10 +3,14 @@ package attestation
 import (
 	"bytes"
 	"encoding/base64"
+	"encoding/binary"
 	"encoding/hex"
+	"encoding/json"
 	"errors"
 	"log"
+	"time"
 
+	"github.com/blocky/nitrite"
 	encoding "github.com/zkportal/aleo-oracle-encoding"
 	aleo_signer "github.com/zkportal/aleo-utils-go"
 
@@ -16,6 +20,8 @@ import (
 
 // Tee types
 const (
+	// AWS Nitro enclave
+	TEE_TYPE_NITRO string = "nitro"
 	// Intel SGX
 	TEE_TYPE_SGX string = "sgx"
 
@@ -72,6 +78,94 @@ func VerifySgxReport(reportString string) (*attestation.Report, error) {
 	return &report, nil
 }
 
+type Document struct {
+	ModuleID    string `cbor:"module_id" json:"module_id"`
+	Timestamp   uint64 `cbor:"timestamp" json:"timestamp"`
+	Digest      string `cbor:"digest" json:"digest"`
+	Certificate string `cbor:"certificate" json:"certificate"`
+
+	PCRs     map[uint]string `cbor:"pcrs" json:"pcrs"`
+	CABundle []string        `cbor:"cabundle" json:"cabundle"`
+
+	PublicKey string `cbor:"public_key" json:"public_key,omitempty"`
+	UserData  string `cbor:"user_data" json:"user_data,omitempty"`
+	Nonce     string `cbor:"nonce" json:"nonce,omitempty"`
+}
+
+func verifyNitroReport(reportString, nonceString string) ([]byte, error) {
+	reportBytes, err := base64.StdEncoding.DecodeString(reportString)
+	if err != nil {
+		return nil, errors.New("error verifying nitro report: error decoding report")
+	}
+
+	log.Println("Report bytes:", hex.EncodeToString(reportBytes))
+	log.Println()
+	log.Println()
+	log.Println()
+
+	report, err := nitrite.Verify(reportBytes, nitrite.VerifyOptions{CurrentTime: time.Date(2024, time.March, 20, 15, 0, 0, 0, time.UTC)})
+	if err != nil {
+		return nil, err
+	}
+
+	log.Println("Protected begin:", hex.EncodeToString(report.Protected))
+	// log.Println("Protected length:", len(report.Protected))
+
+	log.Println("Unprotected begin:", hex.EncodeToString(report.Unprotected))
+	log.Println("Unprotected length:", len(report.Unprotected))
+
+	log.Println("Payload begin:", hex.EncodeToString(report.Payload[0:32]))
+	log.Println("Payload length:", len(report.Payload))
+
+	log.Println("Signature:", hex.EncodeToString(report.Signature))
+
+	log.Println("Module ID as bytes", hex.EncodeToString([]byte(report.Document.ModuleID)))
+
+	timestampBuf := make([]byte, 8)
+	binary.LittleEndian.PutUint64(timestampBuf, report.Document.Timestamp)
+
+	log.Println("Little endian timestamp:", hex.EncodeToString(timestampBuf))
+
+	binary.BigEndian.PutUint64(timestampBuf, report.Document.Timestamp)
+	log.Println("Big endian timestamp:", hex.EncodeToString(timestampBuf))
+
+	document := Document{
+		ModuleID:  report.Document.ModuleID,
+		Timestamp: report.Document.Timestamp,
+		Digest:    report.Document.Digest,
+
+		PCRs:        make(map[uint]string),
+		Certificate: hex.EncodeToString(report.Document.Certificate),
+		CABundle:    make([]string, len(report.Document.CABundle)),
+
+		PublicKey: hex.EncodeToString(report.Document.PublicKey),
+		UserData:  hex.EncodeToString(report.Document.UserData),
+		Nonce:     hex.EncodeToString(report.Document.Nonce),
+	}
+
+	for k, v := range report.Document.PCRs {
+		document.PCRs[k] = hex.EncodeToString(v)
+	}
+
+	for idx, v := range report.Document.CABundle {
+		document.CABundle[idx] = hex.EncodeToString(v)
+	}
+
+	d, err := json.Marshal(document)
+	if err != nil {
+		return nil, err
+	}
+	log.Println("Document:", string(d))
+
+	nonce := hex.EncodeToString(report.Document.Nonce)
+
+	if nonceString != nonce {
+		return nil, errors.New("error verifying nitro report: nonce missmatched")
+	}
+
+	return report.Document.UserData, nil
+}
+
 func VerifyReport(signerSession aleo_signer.Session, resp AttestationResponse, targetUniqueId string) error {
 	var usrData []byte
 	var err error
@@ -86,8 +180,8 @@ func VerifyReport(signerSession aleo_signer.Session, resp AttestationResponse, t
 		}
 		usrData = report.Data
 		parsedUniqueId = hex.EncodeToString(report.UniqueID)
-	default:
-		err = errors.New("unknown TEE type")
+	case TEE_TYPE_NITRO:
+		usrData, err = verifyNitroReport(resp.AttestationReport, resp.Nonce)
 	}
 	if err != nil {
 		return err
