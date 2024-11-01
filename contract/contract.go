@@ -34,84 +34,169 @@ func bigIntStrToBytes(strBigInt string) []byte {
 	return bytes
 }
 
-func requestAndParseString(c *http.Client, url string, retry bool) ([]byte, error) {
+func requestProgramString(c *http.Client, url string, retry bool) (string, error) {
 	req, err := http.NewRequest(http.MethodGet, url, nil)
 	if err != nil {
-		return nil, err
+		return "", err
 	}
 
 	resp, err := c.Do(req)
 	if err != nil {
-		return nil, err
+		return "", err
 	}
 	defer resp.Body.Close()
 
 	if retry && (resp.StatusCode == http.StatusInternalServerError || resp.StatusCode == http.StatusNotFound) {
 		log.Printf("contract: requesting %s returned %d, trying again\n", url, resp.StatusCode)
 		time.Sleep(3 * time.Second)
-		return requestAndParseString(c, url, false)
+		return requestProgramString(c, url, false)
+	}
+
+	if resp.StatusCode == http.StatusTooManyRequests {
+		return "", errors.New("contract: Aleo node API responded with 429 Too Many Requests, try again later")
 	}
 
 	if resp.StatusCode != http.StatusOK {
-		return nil, errors.New("contract: did not get an OK response")
+		return "", errors.New("contract: did not get an OK response")
 	}
 
 	body, err := io.ReadAll(resp.Body)
 	if err != nil {
-		return nil, err
+		return "", err
 	}
 
 	var result string
 
 	err = json.Unmarshal(body, &result)
 	if err != nil {
-		return nil, err
+		return "", err
 	}
 
 	if result == "null" {
-		return nil, errors.New("contract: value is not set")
+		return "", errors.New("contract: value is not set")
 	}
 
-	result = strings.TrimSuffix(result, "u128")
-
-	byteResult := bigIntStrToBytes(result)
-	if byteResult == nil {
-		return nil, errors.New("contract: invalid value")
-	}
-
-	return byteResult, nil
+	return result, nil
 }
 
-// Retrieves the unique ID from the contract that it uses to verify reports.
-// The contract must have a mapping called unique_id, where the values are stored as u128 with keys "1" and "2".
-func GetUniqueIDAssert(apiBaseUrl, contractName string) (string, error) {
-	apiBaseUrl = strings.TrimSuffix(apiBaseUrl, "/")
+func parseSgxUniqueIdStruct(uniqueIdStructString string) (string, error) {
+	// The unique ID is stored using this type:
+	// struct Unique_id {
+	//   chunk_1: u128,
+	//   chunk_2: u128
+	// }
 
-	requestUrl1 := apiBaseUrl + "/program/" + url.PathEscape(contractName) + "/mapping/unique_id/1u8"
-	requestUrl2 := apiBaseUrl + "/program/" + url.PathEscape(contractName) + "/mapping/unique_id/2u8"
+	chunks := strings.Split(uniqueIdStructString, "\n")
 
-	// the urls below contain some live contract, which has u8 keys and u128 values so it works for testing here
-	// requestUrl1 := "https://api.explorer.aleo.org/v1/testnet3/program/aleo_name_service_registry_v3.aleo/mapping/general_settings/2u8"
-	// requestUrl2 := "https://api.explorer.aleo.org/v1/testnet3/program/aleo_name_service_registry_v3.aleo/mapping/general_settings/3u8"
+	uniqueId := make([]byte, 0, 32)
 
-	client := &http.Client{
-		Timeout: time.Second * 30,
+	for _, chunk := range chunks {
+		if !strings.Contains(chunk, "chunk_") {
+			continue
+		}
+
+		valBegin := strings.Index(chunk, ": ")
+		valEnd := strings.Index(chunk, "u128")
+
+		if valBegin == -1 || valEnd == -1 {
+			return "", errors.New("unexpected type of unique ID chunks in sgx_unique_id mapping")
+		}
+
+		uniqueIdPart := chunk[valBegin+2 : valEnd]
+		uniqueId = append(uniqueId, bigIntStrToBytes(uniqueIdPart)...)
 	}
 
-	uniqueIdPart1, err := requestAndParseString(client, requestUrl1, true)
-	if err != nil {
-		return "", err
-	}
-
-	uniqueIdPart2, err := requestAndParseString(client, requestUrl2, true)
-	if err != nil {
-		return "", err
-	}
-
-	uniqueId := append(uniqueIdPart1, uniqueIdPart2...)
 	if len(uniqueId) != 32 {
 		return "", errors.New("malformed unique id in the contract")
 	}
 
 	return hex.EncodeToString(uniqueId), nil
+}
+
+func parseNitroPcrValues(nitroPcrStructString string) ([]string, error) {
+	// The PCR values are stored using this type:
+	// struct PCR_values {
+	//   pcr_0_chunk_1: u128,
+	//   pcr_0_chunk_2: u128,
+	//   pcr_0_chunk_3: u128,
+	//   pcr_1_chunk_1: u128,
+	//   pcr_1_chunk_2: u128,
+	//   pcr_1_chunk_3: u128,
+	//   pcr_2_chunk_1: u128,
+	//   pcr_2_chunk_2: u128,
+	//   pcr_2_chunk_3: u128
+	// }
+
+	chunks := strings.Split(nitroPcrStructString, "\n")
+
+	pcrValues := make([][]byte, 0, 9)
+	for _, chunk := range chunks {
+		if !strings.Contains(chunk, "pcr_") {
+			continue
+		}
+
+		valBegin := strings.Index(chunk, ": ")
+		valEnd := strings.Index(chunk, "u128")
+
+		if valBegin == -1 || valEnd == -1 {
+			return nil, errors.New("unexpected type of PCR value chunks in nitro_pcr_values mapping")
+		}
+
+		pcrValuePart := chunk[valBegin+2 : valEnd]
+		pcrValues = append(pcrValues, bigIntStrToBytes(pcrValuePart))
+	}
+
+	if len(pcrValues) != 9 {
+		return nil, errors.New("unexpected type of PCR values struct in nitro_pcr_values mapping")
+	}
+
+	pcrs := make([]string, 3)
+	for pcrIdx := 0; pcrIdx < 3; pcrIdx++ {
+		pcr := make([]byte, 0, 48)
+		pcr = append(pcr, pcrValues[pcrIdx*3]...)
+		pcr = append(pcr, pcrValues[pcrIdx*3+1]...)
+		pcr = append(pcr, pcrValues[pcrIdx*3+2]...)
+
+		pcrs[pcrIdx] = hex.EncodeToString(pcr)
+	}
+
+	return pcrs, nil
+}
+
+// Retrieves the SGX unique ID from the contract that it uses to verify reports.
+// The contract must have a mapping called sgx_unique_id, where the value us stored as a struct under the "0u8" key.
+func GetSgxUniqueIDAssert(apiBaseUrl, contractName string) (string, error) {
+	apiBaseUrl = strings.TrimSuffix(apiBaseUrl, "/")
+
+	requestUrl := apiBaseUrl + "/program/" + url.PathEscape(contractName) + "/mapping/sgx_unique_id/0u8"
+
+	client := &http.Client{
+		Timeout: time.Second * 30,
+	}
+
+	uniqueIdStructString, err := requestProgramString(client, requestUrl, true)
+	if err != nil {
+		return "", err
+	}
+
+	return parseSgxUniqueIdStruct(uniqueIdStructString)
+}
+
+// Retrieves the Nitro PCR values from the contract that it uses to verify reports.
+// The contract must have a mapping called nitro_pcr_values, where the value us stored as a struct under the "0u8" key.
+func GetNitroPcrValuesAssert(apiBaseUrl, contractName string) ([]string, error) {
+	apiBaseUrl = strings.TrimSuffix(apiBaseUrl, "/")
+
+	requestUrl := apiBaseUrl + "/program/" + url.PathEscape(contractName) + "/mapping/nitro_pcr_values/0u8"
+
+	client := &http.Client{
+		Timeout: time.Second * 30,
+	}
+
+	pcrsStructString, err := requestProgramString(client, requestUrl, true)
+	if err != nil {
+		return nil, err
+	}
+
+	return parseNitroPcrValues(pcrsStructString)
 }

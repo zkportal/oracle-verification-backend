@@ -3,10 +3,15 @@
   "useTls": false,
   "tlsKey": "key.pem",
   "tlsCert": "cert.pem",
-  "uniqueIdTarget": "anFSoXzL+JMgfVI5DFplOMB2kqU01RJpopwqlKt7YQ4=",
+  "uniqueIdTarget": "RGpRmz/zATF9erKm0HQFGHjCPDRbP4XnbbxpFBMJq/w=",
+  "pcrValuesTarget": [
+    "ifZLGoqBQ0TW/ngrKDUr19ax+HWFDb44GlIkKBuvcczPfBLO6bkhrTlOD3owImfg",
+    "A0OwVs2Ehcp4kN3YM0dteEYK7SqhYVSOTia+3zIXJmliV9Yj6IBfP2BZRrPYsMaq",
+    "EeFmnkqglQNR4pz7vla+0hDxl8AV3Hlb+ZyAVhkIloavkDQQxB5cJWJRbxdaixyl"
+  ],
   "liveCheck": {
-    "skip": false,
-    "apiBaseUrl": "https://api.explorer.aleo.org/v1/testnet",
-    "contractName": "oracle.aleo"
+    "skip": true,
+    "apiBaseUrl": "https://api.explorer.provable.com/v1/testnet",
+    "contractName": "official_oracle.aleo"
   }
 }

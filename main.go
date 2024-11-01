@@ -6,17 +6,16 @@ import (
 	"log"
 	"net/http"
 	"os"
+	"slices"
+	"strings"
 	"time"
 
+	"github.com/zkportal/oracle-verification-backend/api"
+	"github.com/zkportal/oracle-verification-backend/config"
+	"github.com/zkportal/oracle-verification-backend/contract"
 	"github.com/zkportal/oracle-verification-backend/reproducibleEnclave"
 
-	"github.com/zkportal/oracle-verification-backend/contract"
-
-	"github.com/zkportal/oracle-verification-backend/config"
-
-	"github.com/zkportal/oracle-verification-backend/api"
-
-	aleo_internal "github.com/zkportal/aleo-utils-go"
+	aleo_utils "github.com/zkportal/aleo-utils-go"
 )
 
 const (
@@ -35,37 +34,50 @@ func main() {
 		log.Fatalln(err)
 	}
 
-	if conf.UniqueIdTarget == "" {
-		log.Println("Unique ID verification target is not provided (\"uniqueIdTarget\" in config.json), reproducing Aleo Oracle backend build")
-		expectedUniqueId, err := reproducibleEnclave.GetOracleReproducibleUniqueID()
+	if conf.UniqueIdTarget == "" || len(conf.PcrValuesTarget) != 3 {
+		log.Println("One or more enclave measurement targets are not provided (\"uniqueIdTarget\" and \"pcrValuesTarget\" in config.json), reproducing Aleo Oracle backend builds")
+		measurements, err := reproducibleEnclave.GetOracleReproducibleMeasurements()
 		if err != nil {
 			log.Fatalln(err)
 		}
 
-		conf.UniqueIdTarget = expectedUniqueId
+		conf.UniqueIdTarget = measurements.UniqueID
+		conf.PcrValuesTarget = measurements.PCRs[:]
 	}
 
 	if !conf.LiveCheck.Skip {
-		log.Println("Requesting unique ID from", conf.LiveCheck.ContractName, "using", conf.LiveCheck.ApiBaseUrl)
-		liveUniqueId, err := contract.GetUniqueIDAssert(conf.LiveCheck.ApiBaseUrl, conf.LiveCheck.ContractName)
+		log.Println("Requesting SGX Unique ID and Nitro PCR values from", conf.LiveCheck.ContractName, "using", conf.LiveCheck.ApiBaseUrl)
+		liveUniqueId, err := contract.GetSgxUniqueIDAssert(conf.LiveCheck.ApiBaseUrl, conf.LiveCheck.ContractName)
 		if err != nil {
-			log.Fatalln("Failed to fetch live contract's unique ID assertion:", err)
+			log.Fatalln("Failed to fetch live contract's SGX Unique ID assertion:", err)
 		}
 
-		log.Printf("Fetched unique ID assert from %s: %s", conf.LiveCheck.ContractName, liveUniqueId)
+		log.Printf("Fetched SGX Unique ID assertion from %s: %s", conf.LiveCheck.ContractName, liveUniqueId)
 
 		if liveUniqueId != conf.UniqueIdTarget {
-			log.Fatalf("Reproducible build of the oracle backend produced a different unique ID than the live contract.\nLive unique ID: %s\nReproduced unique ID: %s\n", liveUniqueId, conf.UniqueIdTarget)
+			log.Fatalf("Reproducible SGX build of the oracle backend produced a different SGX Unique ID than the live contract.\nLive SGX Unique ID: %s\nReproduced SGX Unique ID: %s\n", liveUniqueId, conf.UniqueIdTarget)
+		}
+
+		livePcrValues, err := contract.GetNitroPcrValuesAssert(conf.LiveCheck.ApiBaseUrl, conf.LiveCheck.ContractName)
+		if err != nil {
+			log.Fatalln("Failed to fetch live contract's Nitro PCR values assertion:", err)
+		}
+
+		log.Printf("Fetched Nitro PCR values asserttion from %s: %s", conf.LiveCheck.ContractName, liveUniqueId)
+
+		if !slices.Equal(livePcrValues, conf.PcrValuesTarget) {
+			log.Fatalf("Reproducible Nitro build of the oracle backend produced different Nitro PCR values than the live contract.\nLive Nitro PCR values: %s\nReproduced Nitro PCR values: %s\n", strings.Join(livePcrValues, ", "), strings.Join(conf.PcrValuesTarget[:], ", "))
 		}
 	} else {
-		log.Println("WARNING: skipping Aleo live contract unique ID check")
+		log.Println("WARNING: skipping Aleo live contract SGX Unique ID and Nitro PCR values check")
 	}
 
-	log.Println("Expecting Aleo Oracle backend to have unique ID:", conf.UniqueIdTarget)
+	log.Println("Expecting Aleo Oracle backend to have SGX Unique ID:", conf.UniqueIdTarget)
+	log.Println("Expecting Aleo Oracle backend to have Nitro PCR values:", strings.Join(conf.PcrValuesTarget, ", "))
 
-	aleo, close, err := aleo_internal.NewWrapper()
+	aleo, close, err := aleo_utils.NewWrapper()
 	if err != nil {
-		log.Fatalln("Failed to initialize Aleo signer:", err)
+		log.Fatalln("Failed to initialize Aleo wrapper:", err)
 	}
 	defer close()
 
