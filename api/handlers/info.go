@@ -4,37 +4,48 @@ import (
 	"encoding/base64"
 	"encoding/hex"
 	"encoding/json"
+	"fmt"
 	"log"
 	"net/http"
 	"time"
 
+	"github.com/zkportal/oracle-verification-backend/attestation/nitro"
 	"github.com/zkportal/oracle-verification-backend/u128"
 )
 
 type infoHandler struct {
 	uniqueId         string
+	pcrValues        [3]string
 	liveCheckProgram string
 	startTime        time.Time
 }
 
-func CreateInfoHandler(uniqueId string, liveCheckProgram string) http.Handler {
+func CreateInfoHandler(uniqueId string, pcrValues [3]string, liveCheckProgram string) http.Handler {
 	return &infoHandler{
 		uniqueId:         uniqueId,
+		pcrValues:        pcrValues,
 		liveCheckProgram: liveCheckProgram,
 		startTime:        time.Now().UTC(),
 	}
 }
 
 type uniqueIdInfo struct {
-	Hex    string    `json:"hexEncoded"`
-	Base64 string    `json:"base64Encoded"`
-	Aleo   [2]string `json:"aleoEncoded"`
+	Hex    string `json:"hexEncoded"`
+	Base64 string `json:"base64Encoded"`
+	Aleo   string `json:"aleoEncoded"`
+}
+
+type pcrValuesInfo struct {
+	Hex    [3]string `json:"hexEncoded"`
+	Base64 [3]string `json:"base64Encoded"`
+	Aleo   string    `json:"aleoEncoded"`
 }
 
 type InfoResponse struct {
-	TargetUniqueId   uniqueIdInfo `json:"targetUniqueId"`
-	LiveCheckProgram string       `json:"liveCheckProgram"`
-	StartTime        string       `json:"startTimeUTC"`
+	TargetUniqueId   uniqueIdInfo  `json:"targetUniqueId"`
+	TargetPcrValues  pcrValuesInfo `json:"targetPcrValues"`
+	LiveCheckProgram string        `json:"liveCheckProgram"`
+	StartTime        string        `json:"startTimeUTC"`
 }
 
 func (h *infoHandler) ServeHTTP(w http.ResponseWriter, req *http.Request) {
@@ -55,11 +66,26 @@ func (h *infoHandler) ServeHTTP(w http.ResponseWriter, req *http.Request) {
 	response.TargetUniqueId = uniqueIdInfo{
 		Hex:    h.uniqueId,
 		Base64: base64.StdEncoding.EncodeToString(uniqueIdBytes),
-		Aleo: [2]string{
-			uniqueIdAleo1.String() + "u128",
-			uniqueIdAleo2.String() + "u128",
-		},
+		Aleo:   fmt.Sprintf("{ chunk_1: %su128, chunk_2: %su128 }", uniqueIdAleo1.String(), uniqueIdAleo2.String()),
 	}
+
+	var pcrBytes [3][48]byte
+
+	for idx, pcr := range h.pcrValues {
+		buf, _ := hex.DecodeString(pcr)
+		pcrBytes[idx] = ([48]byte)(buf)
+	}
+
+	response.TargetPcrValues = pcrValuesInfo{
+		Hex: h.pcrValues,
+		Base64: [3]string{
+			base64.StdEncoding.EncodeToString(pcrBytes[0][:]),
+			base64.StdEncoding.EncodeToString(pcrBytes[1][:]),
+			base64.StdEncoding.EncodeToString(pcrBytes[2][:]),
+		},
+		Aleo: nitro.FormatPcrValues(pcrBytes),
+	}
+
 	response.LiveCheckProgram = h.liveCheckProgram
 	response.StartTime = h.startTime.Format(time.DateTime)
 

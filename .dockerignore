@@ -3,6 +3,6 @@
 Dockerfile
 Dockerfile.source
 .*md
-aleo-signer-go/target/
-aleo-signer-go/cmd/
-aleo-signer-go/*.js
+aleo-utils-go/target/
+aleo-utils-go/cmd/
+aleo-utils-go/*.js

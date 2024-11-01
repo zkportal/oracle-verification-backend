@@ -1,0 +1,104 @@
+FROM ubuntu:focal-20240530 as build
+
+SHELL ["/bin/bash", "-c"]
+
+ENV DEBIAN_FRONTEND=noninteractive
+
+RUN apt-get update && apt-get install -y --no-install-recommends \
+  git \
+  curl \
+  gcc \
+  build-essential \
+  ca-certificates \
+  unzip \
+  jq \
+  libssl-dev \
+  pkg-config \
+  musl-tools \
+  llvm-dev \
+  libclang-dev \
+  clang \
+  gnupg2 \
+  software-properties-common
+
+# Install rust toolchain and its dependencies
+RUN curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh -s -- -y --default-toolchain none
+RUN echo "source $HOME/.cargo/env" >> $HOME/.bashrc
+
+# Build static version of Openssl.
+ENV OPENSSL_VERSION=OpenSSL_1_1_1q
+RUN mkdir /tmp/openssl_src \
+&&  curl -L https://github.com/openssl/openssl/archive/${OPENSSL_VERSION}.zip -o /tmp/openssl_src/openssl.zip \
+&&  unzip /tmp/openssl_src/openssl.zip -d /tmp/openssl_src
+RUN cd /tmp/openssl_src/openssl-${OPENSSL_VERSION} &&  \
+	CC=musl-gcc CFLAGS=-fPIC ./Configure --prefix=/musl_openssl --openssldir=/musl_openssl no-shared no-engine no-afalgeng linux-$(uname -m) -DOPENSSL_NO_SECURE_MEMORY no-tests && \
+	make -j$(nproc) && \
+	make install_sw
+
+# Setup the right rust ver
+ENV RUST_VERSION=1.68.2
+RUN  source $HOME/.cargo/env && \
+	ARCH=$(uname -m) && \
+	rustup toolchain install ${RUST_VERSION}-${ARCH}-unknown-linux-gnu && \
+	rustup default ${RUST_VERSION}-${ARCH}-unknown-linux-gnu && \
+	rustup target add --toolchain ${RUST_VERSION} ${ARCH}-unknown-linux-musl
+
+# Setup the env for nitro-cli
+RUN mkdir -p /var/log/nitro_enclaves
+
+RUN apt-get install -y linux-aws linux-modules-extra-aws
+
+WORKDIR /app
+
+RUN git clone https://github.com/aws/aws-nitro-enclaves-cli
+
+WORKDIR /app/aws-nitro-enclaves-cli
+
+RUN mkdir -p build
+
+ENV TOOLCHAIN_ARCH_TARGET=x86_64
+ENV TOOLCHAIN_PREFIX=unknown-linux-musl
+ENV CARGO_TARGET=${TOOLCHAIN_ARCH_TARGET}-${TOOLCHAIN_PREFIX}
+
+RUN source $HOME/.cargo/env \
+&&  OPENSSL_STATIC=yes OPENSSL_DIR=/musl_openssl/ CC=${CC} ARCH=$(TOOLCHAIN_ARCH_TARGET) cargo build \
+    --release \
+    --target=x86_64-unknown-linux-musl \
+    --target-dir=./build/nitro_cli
+
+RUN mkdir -p /usr/share/nitro_enclaves/blobs \
+    &&  cp -r blobs/x86_64/* /usr/share/nitro_enclaves/blobs/ \
+    &&  install -D -m 0755 build/nitro_cli/x86_64-unknown-linux-musl/release/nitro-cli /usr/bin/nitro-cli
+
+FROM ubuntu:focal-20240530
+
+SHELL ["/bin/bash", "-c"]
+
+ENV DEBIAN_FRONTEND=noninteractive
+
+RUN apt-get update \
+&&  apt-get install -y --no-install-recommends \
+    apt-transport-https \
+    ca-certificates \
+    curl \
+    gnupg2 \
+    software-properties-common \
+&&  curl -fsSL https://download.docker.com/linux/$(. /etc/os-release; echo "$ID")/gpg > /tmp/dkey; apt-key add /tmp/dkey \
+&&  ARCH=$(uname -m) \
+&&  if [ ${ARCH} == "x86_64" ] ; then ARCH="amd64"; elif [ ${ARCH} == "aarch64" ] ; then ARCH="arm64" ; fi \
+&&  add-apt-repository "deb [arch=${ARCH}] https://download.docker.com/linux/$(. /etc/os-release; echo "$ID") $(lsb_release -cs) stable" \
+&&  apt-get update \
+&&  apt-get install -y docker-ce linux-aws linux-modules-extra-aws
+
+RUN mkdir -p /usr/share/nitro_enclaves/blobs
+
+COPY --from=build /app/aws-nitro-enclaves-cli/blobs/x86_64/ /usr/share/nitro_enclaves/blobs/
+COPY --from=build /usr/bin/nitro-cli /usr/bin/nitro-cli
+
+RUN mkdir /app
+
+COPY nitro-build.sh /app/nitro-build.sh
+
+RUN mkdir -p /var/log/nitro_enclaves/ && chmod -R 664 /var/log/nitro_enclaves/
+
+ENTRYPOINT [ "/app/nitro-build.sh" ]

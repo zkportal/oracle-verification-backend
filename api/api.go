@@ -5,11 +5,10 @@ import (
 	"net/http"
 	"runtime/debug"
 
+	"github.com/zkportal/oracle-verification-backend/api/handlers"
 	"github.com/zkportal/oracle-verification-backend/config"
 
-	"github.com/zkportal/oracle-verification-backend/api/handlers"
-
-	aleo_signer "github.com/zkportal/aleo-utils-go"
+	aleo_wrapper "github.com/zkportal/aleo-utils-go"
 
 	"github.com/rs/cors"
 )
@@ -39,7 +38,7 @@ func PanicMiddleware(next http.Handler) http.HandlerFunc {
 	}
 }
 
-func CreateApi(signer aleo_signer.Wrapper, conf *config.Configuration) http.Handler {
+func CreateApi(aleoWrapper aleo_wrapper.Wrapper, conf *config.Configuration) http.Handler {
 	corsMiddleware := cors.New(cors.Options{
 		AllowedOrigins: []string{"*"},
 		AllowedMethods: []string{http.MethodPost},
@@ -51,10 +50,12 @@ func CreateApi(signer aleo_signer.Wrapper, conf *config.Configuration) http.Hand
 
 	mux := http.NewServeMux()
 
-	mux.Handle("/info", addMiddleware(handlers.CreateInfoHandler(conf.UniqueIdTarget, conf.LiveCheck.ContractName)))
-	mux.Handle("/verify", addMiddleware(handlers.CreateVerifyHandler(signer, conf.UniqueIdTarget)))
-	mux.Handle("/decode", addMiddleware(handlers.CreateDecodeHandler(signer)))
-	mux.Handle("/decodeReport", addMiddleware(handlers.CreateDecodeVerifyHandler(signer, conf.UniqueIdTarget)))
+	targetPcrs := [3]string{conf.PcrValuesTarget[0], conf.PcrValuesTarget[1], conf.PcrValuesTarget[2]}
+
+	mux.Handle("/info", addMiddleware(handlers.CreateInfoHandler(conf.UniqueIdTarget, targetPcrs, conf.LiveCheck.ContractName)))
+	mux.Handle("/verify", addMiddleware(handlers.CreateVerifyHandler(aleoWrapper, conf.UniqueIdTarget, targetPcrs)))
+	mux.Handle("/decode", addMiddleware(handlers.CreateDecodeHandler(aleoWrapper)))
+	mux.Handle("/decodeReport", addMiddleware(handlers.CreateDecodeVerifyHandler(aleoWrapper, conf.UniqueIdTarget, targetPcrs)))
 
 	return mux
 }

@@ -6,7 +6,7 @@ import (
 	"log"
 	"net/http"
 
-	aleo_signer "github.com/zkportal/aleo-utils-go"
+	aleo_wrapper "github.com/zkportal/aleo-utils-go"
 
 	"github.com/zkportal/oracle-verification-backend/attestation"
 )
@@ -42,7 +42,7 @@ func respondDecode(w http.ResponseWriter, decodedData *attestation.DecodedProofD
 	w.Write(msg)
 }
 
-func CreateDecodeHandler(aleo aleo_signer.Wrapper) http.HandlerFunc {
+func CreateDecodeHandler(aleo aleo_wrapper.Wrapper) http.HandlerFunc {
 	return func(w http.ResponseWriter, req *http.Request) {
 		if req.Method != http.MethodPost {
 			w.WriteHeader(http.StatusMethodNotAllowed)
@@ -76,15 +76,15 @@ func CreateDecodeHandler(aleo aleo_signer.Wrapper) http.HandlerFunc {
 			return
 		}
 
-		signerSession, err := aleo.NewSession()
+		aleoSession, err := aleo.NewSession()
 		if err != nil {
-			log.Println("error creating new signer session:", err)
+			log.Println("error creating new aleo session:", err)
 			w.WriteHeader(http.StatusInternalServerError)
 			return
 		}
-		defer signerSession.Close()
+		defer aleoSession.Close()
 
-		recoveredMessage, err := signerSession.RecoverMessage([]byte(request.UserData))
+		recoveredMessage, err := aleoSession.RecoverMessage([]byte(request.UserData))
 		if err != nil {
 			log.Println("error recovering formatted message:", err)
 			respondDecode(w, nil, err)

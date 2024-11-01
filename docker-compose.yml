@@ -1,0 +1,16 @@
+name: verifier
+
+services:
+  pccs:
+    build: pccs/
+    platform: linux/amd64
+    ports:
+      - "8081:8081"
+    environment:
+      APIKEY: ${APIKEY}
+
+  verification-backend:
+    build: .
+    platform: linux/amd64
+    ports:
+      - "8080:8080"

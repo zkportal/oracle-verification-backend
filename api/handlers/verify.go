@@ -1,19 +1,22 @@
 package handlers
 
 import (
+	"encoding/base64"
 	"encoding/json"
 	"io"
 	"log"
 	"net/http"
-
-	aleo_signer "github.com/zkportal/aleo-utils-go"
+	"strings"
 
 	"github.com/zkportal/oracle-verification-backend/attestation"
+
+	aleo_wrapper "github.com/zkportal/aleo-utils-go"
 )
 
 type verifyHandler struct {
-	signer         aleo_signer.Wrapper
-	targetUniqueId string
+	aleoWrapper     aleo_wrapper.Wrapper
+	targetUniqueId  string
+	targetPcrValues [3]string
 }
 
 type VerifyReportsRequest struct {
@@ -22,21 +25,24 @@ type VerifyReportsRequest struct {
 
 type VerifyReportsResponse struct {
 	Success      bool   `json:"success"`
+	ValidReports []int  `json:"validReports"`
 	ErrorMessage string `json:"errorMessage,omitempty"`
 }
 
-func respondVerify(w http.ResponseWriter, status bool, err error) {
+func respondVerify(w http.ResponseWriter, validReports []int, errors string) {
 	r := &VerifyReportsResponse{
-		Success: status,
+		ValidReports: validReports,
+		Success:      true,
 	}
 
-	if err != nil {
-		r.ErrorMessage = err.Error()
+	if len(errors) != 0 {
+		r.Success = false
+		r.ErrorMessage = errors
 	}
 
 	msg, err := json.Marshal(r)
 	if err != nil {
-		log.Println("/verify: failed to marshal response:", err)
+		log.Println("failed to marshal response:", err)
 		w.WriteHeader(http.StatusInternalServerError)
 		return
 	}
@@ -45,10 +51,11 @@ func respondVerify(w http.ResponseWriter, status bool, err error) {
 	w.Write(msg)
 }
 
-func CreateVerifyHandler(signer aleo_signer.Wrapper, uniqueId string) http.Handler {
+func CreateVerifyHandler(aleoWrapper aleo_wrapper.Wrapper, uniqueId string, pcrValues [3]string) http.Handler {
 	return &verifyHandler{
-		signer:         signer,
-		targetUniqueId: uniqueId,
+		aleoWrapper:     aleoWrapper,
+		targetUniqueId:  uniqueId,
+		targetPcrValues: pcrValues,
 	}
 }
 
@@ -68,7 +75,6 @@ func (vh *verifyHandler) ServeHTTP(w http.ResponseWriter, req *http.Request) {
 	body, err := io.ReadAll(req.Body)
 	defer req.Body.Close()
 	if err != nil {
-		log.Println("/verify: failed to read request body: ", err)
 		w.WriteHeader(http.StatusBadRequest)
 		return
 	}
@@ -76,33 +82,50 @@ func (vh *verifyHandler) ServeHTTP(w http.ResponseWriter, req *http.Request) {
 	request := new(VerifyReportsRequest)
 	err = json.Unmarshal(body, request)
 	if err != nil {
-		log.Println("/verify: error reading request", err)
+		log.Println("error reading request", err)
 		w.WriteHeader(http.StatusInternalServerError)
 		return
 	}
 
 	if len(request.Reports) == 0 {
-		log.Println("/verify: no reports to verify")
 		w.WriteHeader(http.StatusBadRequest)
 		return
 	}
 
-	signerSession, err := vh.signer.NewSession()
+	aleoSession, err := vh.aleoWrapper.NewSession()
 	if err != nil {
-		log.Println("/verify: error creating new signer session:", err)
+		log.Println("error creating new aleo session:", err)
 		w.WriteHeader(http.StatusInternalServerError)
 		return
 	}
-	defer signerSession.Close()
+	defer aleoSession.Close()
 
-	for _, v := range request.Reports {
-		err := attestation.VerifyReport(signerSession, v, vh.targetUniqueId)
+	var validReports []int
+	var errors []string
+	for i, v := range request.Reports {
+		reportBytes, err := base64.StdEncoding.DecodeString(v.AttestationReport)
 		if err != nil {
-			log.Println("/verify: error verifying report:", err)
-			respondVerify(w, false, err)
-			return
+			log.Printf("failed to decode base64 %s report: %s\n", v.ReportType, err)
+			errors = append(errors, err.Error())
+			break
 		}
+
+		_, userData, err := attestation.VerifyReport(v.ReportType, reportBytes, v.Timestamp, v.Nonce, vh.targetUniqueId, vh.targetPcrValues)
+		if err != nil {
+			log.Printf("error verifying %s report: %s\n", v.ReportType, err)
+			errors = append(errors, err.Error())
+			break
+		}
+
+		err = attestation.VerifyReportData(aleoSession, userData, &v)
+		if err != nil {
+			log.Println("error verifying %s report: %s\n", v.ReportType, err)
+			errors = append(errors, err.Error())
+			break
+		}
+
+		validReports = append(validReports, i)
 	}
 
-	respondVerify(w, true, nil)
+	respondVerify(w, validReports, strings.Join(errors, "; "))
 }

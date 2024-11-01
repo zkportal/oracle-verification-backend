@@ -16,12 +16,12 @@ fi
 # set default value for the CA certificates bundle date to download.
 # see https://curl.se/docs/caextract.html
 if [ "$CA_CERT_DATE" = "" ]; then
-  CA_CERT_DATE="2023-12-12"
+  CA_CERT_DATE="2024-07-02"
 fi
 
 # set default source code revision to master
 if [ "$ORACLE_REVISION" = "" ]; then
-  ORACLE_REVISION="master"
+  ORACLE_REVISION="main"
 fi
 
 finish() {
@@ -40,13 +40,13 @@ finish() {
 }
 
 usage() {
-  echo "Aleo Oracle verification script for getting Oracle's unique ID using reproducible build."
+  echo "Aleo Oracle verification script for getting Oracle backend SGX and Nitro enclave measurements using reproducible build."
   echo ""
   echo "This script essentially is the process described in https://github.com/zkportal/oracle-notarization-backend?tab=readme-ov-file#reproducible-build but without the installation steps"
   echo ""
   echo "This script accepts some configuration options using environment variables:"
   echo "\t - TEMP_WD - path to a temporary directory where the script will be downloading, will be deleted automatically. Optional, uses current working directory by default."
-  echo "\t - CA_CERT_DATE - The date of the Mozilla's CA certificates bundle. Optional, uses 2023-12-12 by default. See https://curl.se/docs/caextract.html for available bundles."
+  echo "\t - CA_CERT_DATE - The date of the Mozilla's CA certificates bundle. Optional, uses 2024-07-02 by default. See https://curl.se/docs/caextract.html for available bundles."
   echo "\t - ORACLE_REVISION - Oracle backend source code revision to check out. Optional, uses master branch by default."
   echo ""
   echo "Example: CA_CERT_DATE=2022-02-01 ./get-enclave-id.sh"
@@ -55,6 +55,8 @@ usage() {
   echo "\t- Git"
   echo "\t- EGo (https://github.com/edgelesssys/ego)"
   echo "\t- curl"
+  echo "\t- docker"
+  echo "\t- jq"
   echo "\t- sha256sum"
 }
 
@@ -69,6 +71,8 @@ check_dependencies() {
   ego_found=$?
   curl_version=$(curl --version)
   curl_found=$?
+  docker_version=$(docker --version)
+  docker_found=$?
 
   should_exit=0
 
@@ -83,12 +87,22 @@ check_dependencies() {
   fi
 
   if [ "$docker_found" -ne "0" ]; then
-    echo "EGo not found, exiting"
+    echo "Docker not found, exiting"
     should_exit=1
   fi
 
   if [ "$curl_found" -ne "0" ]; then
     echo "curl not found, exiting"
+    should_exit=1
+  fi
+
+  # build nitro-cli image
+  docker_build_output=$(docker build -qq -t nitro-cli -f Dockerfile.nitro .)
+  nitro_cli_build_success=$?
+
+  if [ "$nitro_cli_build_success" -ne "0" ]; then
+    echo "failed to build nitro-cli image, exiting"
+    echo "$docker_build_output"
     should_exit=1
   fi
 
@@ -136,6 +150,25 @@ check_dependencies
     exit 1
   fi
 
+  echo "Downloading AWS Nitro root"
+  # download AWS Nitro root
+  curl --silent --show-error https://aws-nitro-enclaves.amazonaws.com/AWS_NitroEnclaves_Root-G1.zip --output AWS_NitroEnclaves_Root-G1.zip
+  aws_nitro_root_download_result=$?
+
+  if [ "$cert_download_result" != 0 ]; then
+    echo "failed to download AWS Nitro root certificate bundle"
+    exit 1
+  fi
+
+  aws_nitro_root_checksum=$(openssl sha256 AWS_NitroEnclaves_Root-G1.zip)
+
+  if [ "$aws_nitro_root_checksum" != "SHA256(AWS_NitroEnclaves_Root-G1.zip)= 8cf60e2b2efca96c6a9e71e851d00c1b6991cc09eadbe64a6a1d1b1eb9faff7c" ]; then
+    echo "AWS Nitro root certificate checksum mismatch"
+    exit 1
+  fi
+
+  unzip -q AWS_NitroEnclaves_Root-G1.zip
+
   # clone the backend with submodules
   echo "Downloading Oracle backend source code ($ORACLE_REVISION)..."
 
@@ -149,6 +182,7 @@ check_dependencies
 
   # copy the ca certs to the location where the enclave.json expects it to be
   cp cacert-$CA_CERT_DATE.pem backend/
+  cp root.pem backend/environment/nitro/aws_nitro_root.pem
 
   (
     cd backend
@@ -169,18 +203,19 @@ check_dependencies
       exit 1
     fi
 
-    echo "Building Oracle backend enclave..."
+    echo "Building Oracle backend SGX enclave..."
 
-    # reproducible build is happening here
-    ego-go build -trimpath -ldflags=-buildid= > /dev/null 2>&1
-    build_result=$?
+    # Build SGX enclave
+    sgx_build=$(ego-go build -trimpath -ldflags=-buildid= 2>&1)
+    sgx_build_result=$?
 
-    if [ "$build_result" != 0 ]; then
+    if [ "$sgx_build_result" != 0 ]; then
       echo "Failed to build Oracle backend enclave. There may be a problem with EGo. If not, try a different revision."
+      echo "$sgx_build"
       exit 1
     fi
 
-    echo "Signing Oracle backend enclave..."
+    echo "Signing Oracle backend SGX enclave..."
 
     ego sign > /dev/null 2>&1
     sign_result=$?
@@ -191,10 +226,35 @@ check_dependencies
     fi
 
     unique_id=$(ego uniqueid oracle-notarization-backend 2> /dev/null)
-    echo "Oracle unique ID:"
+    echo "Oracle SGX unique ID:"
     echo "$unique_id"
+
+    echo "Building Oracle backend Nitro image..."
+
+    # Build Nitro enclave
+    docker_build_output=$(docker build -qq -t oracle-notarization-backend .)
+    docker_build=$?
+
+    if [ "$docker_build" -ne "0" ]; then
+      echo "Failed to build Oracle backend docker image"
+      echo "$docker_build_output"
+      exit 1
+    fi
+
+    echo "Building Oracle backend Nitro enclave..."
+
+    nitro_build=$(docker run --name nitro-cli-build --rm -v /var/run/docker.sock:/var/run/docker.sock nitro-cli oracle-notarization-backend)
+    enclave_build_success=$?
+
+    if [ "$enclave_build_success" -ne "0" ]; then
+      echo "Failed to build Nitro Oracle backend enclave. Output:"
+      echo "$nitro_build"
+      exit 1
+    fi
+
+    echo "Oracle Nitro PCR:"
+    echo "$nitro_build" | jq -r '.Measurements.PCR0, .Measurements.PCR1, .Measurements.PCR2'
 
     exit 0
   )
 )
-
