@@ -100,7 +100,7 @@ func (vh *verifyHandler) ServeHTTP(w http.ResponseWriter, req *http.Request) {
 	}
 	defer aleoSession.Close()
 
-	var validReports []int
+	validReports := make([]int, 0)
 	var errors []string
 	for i, v := range request.Reports {
 		reportBytes, err := base64.StdEncoding.DecodeString(v.AttestationReport)
