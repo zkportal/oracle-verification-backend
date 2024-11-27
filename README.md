@@ -530,8 +530,6 @@ Decoded SGX report properties
     ],
     "userData": "",
     "nonce": "",
-    "protectedCose": "",
-    "signature": ""
   },
   "reportValid": true
 }
@@ -552,8 +550,6 @@ Decoded Nitro report properties
 | `cabundle` | Issuing CA bundle for infrastructure certificate |
 | `userData` | Additional signed user data. In this case it's a Poseidon8 hash of `decodedData` (16 bytes) |
 | `nonce` | An optional cryptographic nonce provided by the attestation consumer as a proof of authenticity |
-| `protectedCose` | Protected section from the COSE Sign1 payload |
-| `signature` | Signature section from the COSE Sign1 payload of the Nitro enclave attestation document |
 
 <details>
 <summary><b>Example response Nitro</b></summary>
@@ -604,9 +600,7 @@ Decoded Nitro report properties
       "MIICwDCCAkegAwIBAgIVAMpOYbic5yzFS4xhFcOrBWiUPJEOMAoGCCqGSM49BAMDMIGKMT0wOwYDVQQDDDRlNDZjZDU3OTY1NWJjMWNjLnpvbmFsLmFwLXNvdXRoLTIuYXdzLm5pdHJvLWVuY2xhdmVzMQwwCgYDVQQLDANBV1MxDzANBgNVBAoMBkFtYXpvbjELMAkGA1UEBhMCVVMxCzAJBgNVBAgMAldBMRAwDgYDVQQHDAdTZWF0dGxlMB4XDTI0MDgzMDA3NTMxNloXDTI0MDgzMTA3NTMxNlowgY8xCzAJBgNVBAYTAlVTMRMwEQYDVQQIDApXYXNoaW5ndG9uMRAwDgYDVQQHDAdTZWF0dGxlMQ8wDQYDVQQKDAZBbWF6b24xDDAKBgNVBAsMA0FXUzE6MDgGA1UEAwwxaS0wMmRkMGFiZTIxNWVjZWE4OS5hcC1zb3V0aC0yLmF3cy5uaXRyby1lbmNsYXZlczB2MBAGByqGSM49AgEGBSuBBAAiA2IABKWioOYVIAx1Bc2ZDU/MtNfNBwOHdKVQwxvekVssJ09cuSj10pqamtah/o5juLW8ZnwR9wZNRUps8LDEs3VoCpS+1dclxsk30Bf72Wa3dan12Kw13UzS/Zwzbc4SswlhE6NmMGQwEgYDVR0TAQH/BAgwBgEB/wIBADAOBgNVHQ8BAf8EBAMCAgQwHQYDVR0OBBYEFKzrRBSipjiEw9jUm89CIS/9xo2zMB8GA1UdIwQYMBaAFIymaagZPHmBWGSEeLeDhY4wePQ6MAoGCCqGSM49BAMDA2cAMGQCMG1lHLqtA6lCFjaPU7b/O+I04YtkNPvnkmdNf+vk9/pwq9sVT14AcLw7hxV+Ux3XrQIwXqMlE0ViSQSRmPIFl0C6kyDADssB/G1Q/oZi4bqyJIFtjTlInlLfEBDWkkBu76Ws"
     ],
     "userData": "X/FUY0m5UiimPFAzL9O0ag==",
-    "nonce": "zM5D5X8cRLqdi6cMnNFRZy7w+QbjuYqsRfZvnlBoY20=",
-    "protectedCose": "oQE4Ig==",
-    "signature": "K3j8xHNw6rxwdGNvnSJAFqLrt7KWznesWDkdbnK8zyazRkcAY/Oj2/QdDs8WyscTWVe1fjTWc+6QACCru5DBl4EH10v5X4Nd/F5iUUQvCtYZBw/Hxuv49T2ScRcNKMD9"
+    "nonce": "zM5D5X8cRLqdi6cMnNFRZy7w+QbjuYqsRfZvnlBoY20="
   },
   "reportValid": true
 }

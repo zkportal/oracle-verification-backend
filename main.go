@@ -11,6 +11,7 @@ import (
 	"time"
 
 	"github.com/zkportal/oracle-verification-backend/api"
+	"github.com/zkportal/oracle-verification-backend/attestation/nitro"
 	"github.com/zkportal/oracle-verification-backend/config"
 	"github.com/zkportal/oracle-verification-backend/contract"
 	"github.com/zkportal/oracle-verification-backend/reproducibleEnclave"
@@ -74,6 +75,11 @@ func main() {
 
 	log.Println("Expecting Aleo Oracle backend to have SGX Unique ID:", conf.UniqueIdTarget)
 	log.Println("Expecting Aleo Oracle backend to have Nitro PCR values:", strings.Join(conf.PcrValuesTarget, ", "))
+
+	err = nitro.Init()
+	if err != nil {
+		log.Fatalln("Failed to initialize Nitro report verifier:", err)
+	}
 
 	aleo, close, err := aleo_utils.NewWrapper()
 	if err != nil {

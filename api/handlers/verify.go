@@ -110,7 +110,7 @@ func (vh *verifyHandler) ServeHTTP(w http.ResponseWriter, req *http.Request) {
 			break
 		}
 
-		_, userData, err := attestation.VerifyReport(v.ReportType, reportBytes, v.Timestamp, v.Nonce, vh.targetUniqueId, vh.targetPcrValues)
+		_, userData, err := attestation.VerifyReport(v.ReportType, reportBytes, v.Nonce, vh.targetUniqueId, vh.targetPcrValues)
 		if err != nil {
 			log.Printf("error verifying %s report: %s\n", v.ReportType, err)
 			errors = append(errors, err.Error())
@@ -119,7 +119,7 @@ func (vh *verifyHandler) ServeHTTP(w http.ResponseWriter, req *http.Request) {
 
 		err = attestation.VerifyReportData(aleoSession, userData, &v)
 		if err != nil {
-			log.Println("error verifying %s report: %s\n", v.ReportType, err)
+			log.Printf("error verifying %s report: %s\n", v.ReportType, err)
 			errors = append(errors, err.Error())
 			break
 		}
