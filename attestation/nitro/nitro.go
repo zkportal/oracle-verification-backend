@@ -7,12 +7,15 @@ import (
 	"log"
 	"slices"
 	"strings"
-	"time"
-
-	"github.com/zkportal/oracle-verification-backend/u128"
+	"sync"
 
 	"github.com/blocky/nitrite"
+	"github.com/zkportal/oracle-verification-backend/u128"
 )
+
+var verifier *nitrite.Verifier
+var initErr error
+var initOnce sync.Once
 
 type Document struct {
 	ModuleID    string `cbor:"module_id" json:"module_id"`
@@ -28,13 +31,26 @@ type Document struct {
 	Nonce     string `cbor:"nonce" json:"nonce,omitempty"`
 }
 
-func VerifyNitroReport(reportBytes []byte, timestamp int64, nonceString string, targetPcrValues [3]string) (*nitrite.Result, error) {
-	report, err := nitrite.Verify(reportBytes, nitrite.VerifyOptions{CurrentTime: time.Unix(timestamp, 0)})
+func Init() error {
+	initOnce.Do(func() {
+		log.Println("nitro: initializing verifier...")
+		verifier, initErr = nitrite.New(nitrite.WithVerificationTime(nitrite.AttestationTime))
+	})
+
+	return initErr
+}
+
+func VerifyNitroReport(reportBytes []byte, nonceString string, targetPcrValues [3]string) (*nitrite.Document, error) {
+	if verifier == nil {
+		panic("nitro verifier is not initialized")
+	}
+
+	report, err := verifier.Verify(reportBytes)
 	if err != nil {
 		return nil, err
 	}
 
-	nonce := hex.EncodeToString(report.Document.Nonce)
+	nonce := hex.EncodeToString(report.Nonce)
 
 	if nonceString != "" && nonceString != nonce {
 		return nil, errors.New("error verifying nitro report: nonce missmatched")
@@ -43,7 +59,7 @@ func VerifyNitroReport(reportBytes []byte, timestamp int64, nonceString string, 
 	var pcrValues [3]string
 
 	for i := uint(0); i < 3; i++ {
-		pcrValues[i] = hex.EncodeToString(report.Document.PCRs[i])
+		pcrValues[i] = hex.EncodeToString(report.PCRs[i])
 	}
 
 	if !slices.Equal(pcrValues[:], targetPcrValues[:]) {
@@ -51,26 +67,26 @@ func VerifyNitroReport(reportBytes []byte, timestamp int64, nonceString string, 
 		return nil, errors.New("report PCR values don't match target")
 	}
 
-	if len(report.Document.UserData) != 16 {
+	if len(report.UserData) != 16 {
 		return nil, errors.New("unexpected length of the attestation report data")
 	}
 
-	return report, nil
+	nitriteDocument := nitrite.Document(report)
+
+	return &nitriteDocument, nil
 }
 
 type DecodedReport struct {
-	ModuleID         string          `json:"moduleID"`
-	Timestamp        uint64          `json:"timestamp"`
-	Digest           string          `json:"digest"`
-	PCRs             map[uint][]byte `json:"pcrs"`
-	AleoPCRs         string          `json:"aleoPcrs"`
-	Certificate      []byte          `json:"certificate"`
-	CABundle         [][]byte        `json:"cabundle"`
-	PublicKey        []byte          `json:"publicKey,omitempty"`
-	UserData         []byte          `json:"userData"`
-	Nonce            []byte          `json:"nonce"`
-	ProtectedSection []byte          `json:"protectedCose"` // Protected section from the COSE Sign1 payload
-	Signature        []byte          `json:"signature"`     // Attestation document signature
+	ModuleID    string          `json:"moduleID"`
+	Timestamp   uint64          `json:"timestamp"`
+	Digest      string          `json:"digest"`
+	PCRs        map[uint][]byte `json:"pcrs"`
+	AleoPCRs    string          `json:"aleoPcrs"`
+	Certificate []byte          `json:"certificate"`
+	CABundle    [][]byte        `json:"cabundle"`
+	PublicKey   []byte          `json:"publicKey,omitempty"`
+	UserData    []byte          `json:"userData"`
+	Nonce       []byte          `json:"nonce"`
 }
 
 func FormatPcrValues(pcrs [3][48]byte) string {
@@ -101,28 +117,27 @@ func FormatPcrValues(pcrs [3][48]byte) string {
 	return "{ " + strings.Join(pairs, ", ") + " }"
 }
 
+// FormatReport prints a parsed document in human readable form with an additional field of Aleo-encoded PCR values
 func FormatReport(reportVar interface{}) (interface{}, error) {
-	report, ok := reportVar.(*nitrite.Result)
+	report, ok := reportVar.(*nitrite.Document)
 	if !ok {
 		return nil, errors.New("unexpected report type")
 	}
 
-	pcr0 := report.Document.PCRs[0]
-	pcr1 := report.Document.PCRs[1]
-	pcr2 := report.Document.PCRs[2]
+	pcr0 := report.PCRs[0]
+	pcr1 := report.PCRs[1]
+	pcr2 := report.PCRs[2]
 
 	return &DecodedReport{
-		ModuleID:         report.Document.ModuleID,
-		Timestamp:        report.Document.Timestamp,
-		Digest:           report.Document.Digest,
-		PCRs:             report.Document.PCRs,
-		AleoPCRs:         FormatPcrValues([3][48]byte{[48]byte(pcr0), [48]byte(pcr1), [48]byte(pcr2)}),
-		Certificate:      report.Document.Certificate,
-		CABundle:         report.Document.CABundle,
-		PublicKey:        report.Document.PublicKey,
-		UserData:         report.Document.UserData,
-		Nonce:            report.Document.Nonce,
-		ProtectedSection: report.Protected,
-		Signature:        report.Signature,
+		ModuleID:    report.ModuleID,
+		Timestamp:   report.Timestamp,
+		Digest:      report.Digest,
+		PCRs:        report.PCRs,
+		AleoPCRs:    FormatPcrValues([3][48]byte{[48]byte(pcr0), [48]byte(pcr1), [48]byte(pcr2)}),
+		Certificate: report.Certificate,
+		CABundle:    report.CABundle,
+		PublicKey:   report.PublicKey,
+		UserData:    report.UserData,
+		Nonce:       report.Nonce,
 	}, nil
 }

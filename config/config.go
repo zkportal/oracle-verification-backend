@@ -58,14 +58,6 @@ func validateAndNormalizeUniqueId(conf *Configuration) error {
 }
 
 func validateAndNormalizePcrValues(conf *Configuration) error {
-	// if len(conf.PcrValuesTarget) == 0 {
-	// 	return nil
-	// }
-
-	// if len(conf.PcrValuesTarget) != 3 {
-	// 	return errors.New("config \"pcrValuesTarget\" must contain 3 strings")
-	// }
-
 	for pcrIdx, pcr := range conf.PcrValuesTarget {
 		var pcrBytes []byte
 		var err error

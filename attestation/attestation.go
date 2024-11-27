@@ -61,7 +61,7 @@ var (
 	ErrUnsupportedReportType         = errors.New("unsupported report type")
 )
 
-func VerifyReport(reportType string, report []byte, timestamp int64, nonce string, targetUniqueId string, targetPcrValues [3]string) (interface{}, []byte, error) {
+func VerifyReport(reportType string, report []byte, nonce string, targetUniqueId string, targetPcrValues [3]string) (interface{}, []byte, error) {
 	switch reportType {
 	case TEE_TYPE_SGX:
 		parsedReport, err := sgx.VerifySgxReport(report, targetUniqueId)
@@ -72,12 +72,12 @@ func VerifyReport(reportType string, report []byte, timestamp int64, nonce strin
 		return parsedReport, parsedReport.Data, nil
 
 	case TEE_TYPE_NITRO:
-		parsedReport, err := nitro.VerifyNitroReport(report, timestamp, nonce, targetPcrValues)
+		parsedReport, err := nitro.VerifyNitroReport(report, nonce, targetPcrValues)
 		if err != nil {
 			return nil, nil, err
 		}
 
-		return parsedReport, parsedReport.Document.UserData, nil
+		return parsedReport, parsedReport.UserData, nil
 
 	default:
 		return nil, nil, ErrUnsupportedReportType

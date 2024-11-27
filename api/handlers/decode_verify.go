@@ -136,7 +136,7 @@ func (dvh *decodeVerifyHandler) ServeHTTP(w http.ResponseWriter, req *http.Reque
 		return
 	}
 
-	report, userData, err := attestation.VerifyReport(teeType, normalizedReport, decodedData.Timestamp, "", dvh.targetUniqueId, dvh.targetPcrValues)
+	report, userData, err := attestation.VerifyReport(teeType, normalizedReport, "", dvh.targetUniqueId, dvh.targetPcrValues)
 	if err != nil {
 		respondDecodeVerify(w, decodedData, nil, err)
 		return
