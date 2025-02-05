@@ -1,9 +1,9 @@
 package handlers
 
 import (
+	"context"
 	"encoding/json"
 	"io"
-	"log"
 	"net/http"
 
 	aleo_wrapper "github.com/zkportal/aleo-utils-go"
@@ -21,7 +21,7 @@ type DecodeProofDataResponse struct {
 	ErrorMessage string                        `json:"errorMessage,omitempty"`
 }
 
-func respondDecode(w http.ResponseWriter, decodedData *attestation.DecodedProofData, err error) {
+func respondDecode(ctx context.Context, w http.ResponseWriter, decodedData *attestation.DecodedProofData, err error) {
 	r := &DecodeProofDataResponse{
 		DecodedData: decodedData,
 		Success:     decodedData != nil,
@@ -30,6 +30,8 @@ func respondDecode(w http.ResponseWriter, decodedData *attestation.DecodedProofD
 	if err != nil {
 		r.ErrorMessage = err.Error()
 	}
+
+	log := GetContextLogger(ctx)
 
 	msg, err := json.Marshal(r)
 	if err != nil {
@@ -54,7 +56,7 @@ func CreateDecodeHandler(aleo aleo_wrapper.Wrapper) http.HandlerFunc {
 			return
 		}
 
-		log.Println("handling /decode")
+		log := GetContextLogger(req.Context())
 
 		body, err := io.ReadAll(req.Body)
 		defer req.Body.Close()
@@ -87,17 +89,17 @@ func CreateDecodeHandler(aleo aleo_wrapper.Wrapper) http.HandlerFunc {
 		recoveredMessage, err := aleoSession.RecoverMessage([]byte(request.UserData))
 		if err != nil {
 			log.Println("error recovering formatted message:", err)
-			respondDecode(w, nil, err)
+			respondDecode(req.Context(), w, nil, err)
 			return
 		}
 
 		decodedData, err := attestation.DecodeProofData(recoveredMessage)
 		if err != nil {
 			log.Println("error decoding proof data:", err)
-			respondDecode(w, nil, err)
+			respondDecode(req.Context(), w, nil, err)
 			return
 		}
 
-		respondDecode(w, decodedData, nil)
+		respondDecode(req.Context(), w, decodedData, nil)
 	}
 }

@@ -76,19 +76,6 @@ func VerifyNitroReport(reportBytes []byte, nonceString string, targetPcrValues [
 	return &nitriteDocument, nil
 }
 
-type DecodedReport struct {
-	ModuleID    string          `json:"moduleID"`
-	Timestamp   uint64          `json:"timestamp"`
-	Digest      string          `json:"digest"`
-	PCRs        map[uint][]byte `json:"pcrs"`
-	AleoPCRs    string          `json:"aleoPcrs"`
-	Certificate []byte          `json:"certificate"`
-	CABundle    [][]byte        `json:"cabundle"`
-	PublicKey   []byte          `json:"publicKey,omitempty"`
-	UserData    []byte          `json:"userData"`
-	Nonce       []byte          `json:"nonce"`
-}
-
 func FormatPcrValues(pcrs [3][48]byte) string {
 	// struct PCR_values {
 	//   pcr_1_chunk_1: u128,
@@ -115,29 +102,4 @@ func FormatPcrValues(pcrs [3][48]byte) string {
 	}
 
 	return "{ " + strings.Join(pairs, ", ") + " }"
-}
-
-// FormatReport prints a parsed document in human readable form with an additional field of Aleo-encoded PCR values
-func FormatReport(reportVar interface{}) (interface{}, error) {
-	report, ok := reportVar.(*nitrite.Document)
-	if !ok {
-		return nil, errors.New("unexpected report type")
-	}
-
-	pcr0 := report.PCRs[0]
-	pcr1 := report.PCRs[1]
-	pcr2 := report.PCRs[2]
-
-	return &DecodedReport{
-		ModuleID:    report.ModuleID,
-		Timestamp:   report.Timestamp,
-		Digest:      report.Digest,
-		PCRs:        report.PCRs,
-		AleoPCRs:    FormatPcrValues([3][48]byte{[48]byte(pcr0), [48]byte(pcr1), [48]byte(pcr2)}),
-		Certificate: report.Certificate,
-		CABundle:    report.CABundle,
-		PublicKey:   report.PublicKey,
-		UserData:    report.UserData,
-		Nonce:       report.Nonce,
-	}, nil
 }
