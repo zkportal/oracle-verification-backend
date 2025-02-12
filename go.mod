@@ -7,7 +7,7 @@ require (
 	github.com/edgelesssys/ego v1.6.1
 	github.com/rs/cors v1.11.1
 	github.com/zkportal/aleo-oracle-encoding v1.0.0
-	github.com/zkportal/aleo-utils-go v1.1.2
+	github.com/zkportal/aleo-utils-go v1.1.3
 )
 
 require (
