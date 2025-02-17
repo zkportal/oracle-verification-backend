@@ -15,6 +15,8 @@ const (
 	PriceFeedBtcUrl  = "price_feed: btc"
 	PriceFeedEthUrl  = "price_feed: eth"
 	PriceFeedAleoUrl = "price_feed: aleo"
+
+	AttestationDataSizeLimit = 1024 * 3
 )
 
 func padStringToLength(str string, paddingChar byte, targetLength int) string {
@@ -24,7 +26,7 @@ func padStringToLength(str string, paddingChar byte, targetLength int) string {
 func prepareAttestationData(attestationData string, encodingOptions *encoding.EncodingOptions) string {
 	switch encodingOptions.Value {
 	case encoding.ENCODING_OPTION_STRING:
-		return padStringToLength(attestationData, 0x00, 4096)
+		return padStringToLength(attestationData, 0x00, AttestationDataSizeLimit)
 	case encoding.ENCODING_OPTION_FLOAT:
 		if strings.Contains(attestationData, ".") {
 			return padStringToLength(attestationData, '0', math.MaxUint8)
