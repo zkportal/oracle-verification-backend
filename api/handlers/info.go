@@ -5,7 +5,6 @@ import (
 	"encoding/hex"
 	"encoding/json"
 	"fmt"
-	"log"
 	"net/http"
 	"time"
 
@@ -54,7 +53,7 @@ func (h *infoHandler) ServeHTTP(w http.ResponseWriter, req *http.Request) {
 		return
 	}
 
-	log.Println("handling /info")
+	log := GetContextLogger(req.Context())
 
 	response := new(InfoResponse)
 
@@ -96,5 +95,10 @@ func (h *infoHandler) ServeHTTP(w http.ResponseWriter, req *http.Request) {
 		return
 	}
 
-	w.Write(responseBody)
+	_, err = w.Write(responseBody)
+	if err != nil {
+		log.Println("failed to write response:", err)
+		w.WriteHeader(http.StatusInternalServerError)
+		return
+	}
 }

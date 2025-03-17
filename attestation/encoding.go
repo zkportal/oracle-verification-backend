@@ -5,12 +5,49 @@ import (
 	"errors"
 	"log"
 	"math"
+	"strings"
 
 	encoding "github.com/zkportal/aleo-oracle-encoding"
 	"github.com/zkportal/aleo-oracle-encoding/positionRecorder"
 )
 
+const (
+	PriceFeedBtcUrl  = "price_feed: btc"
+	PriceFeedEthUrl  = "price_feed: eth"
+	PriceFeedAleoUrl = "price_feed: aleo"
+
+	AttestationDataSizeLimit = 1024 * 3
+)
+
+func padStringToLength(str string, paddingChar byte, targetLength int) string {
+	return str + strings.Repeat(string(paddingChar), targetLength-len(str))
+}
+
+func prepareAttestationData(attestationData string, encodingOptions *encoding.EncodingOptions) string {
+	switch encodingOptions.Value {
+	case encoding.ENCODING_OPTION_STRING:
+		return padStringToLength(attestationData, 0x00, AttestationDataSizeLimit)
+	case encoding.ENCODING_OPTION_FLOAT:
+		if strings.Contains(attestationData, ".") {
+			return padStringToLength(attestationData, '0', math.MaxUint8)
+		} else {
+			return padStringToLength(attestationData+".", '0', math.MaxUint8)
+		}
+	case encoding.ENCODING_OPTION_INT:
+		// for integers we prepend zeroes instead of appending, that allows strconv to parse it no matter how many zeroes there are
+		return padStringToLength("", '0', math.MaxUint8-len(attestationData)) + attestationData
+	}
+
+	return attestationData
+}
+
 func PrepareProofData(statusCode int, attestationData string, timestamp int64, req *AttestationRequest) ([]byte, error) {
+	preppedAttestationData := attestationData
+
+	if req.Url != PriceFeedBtcUrl && req.Url != PriceFeedEthUrl && req.Url != PriceFeedAleoUrl {
+		preppedAttestationData = prepareAttestationData(attestationData, &req.EncodingOptions)
+	}
+
 	var buf bytes.Buffer
 
 	// information about the positions and lengths of all the encoded elements
@@ -20,7 +57,7 @@ func PrepareProofData(statusCode int, attestationData string, timestamp int64, r
 	encoding.WriteWithPadding(recorder, make([]byte, encoding.TARGET_ALIGNMENT*2))
 
 	// write attestationData
-	attestationDataBuffer, err := encoding.EncodeAttestationData(attestationData, &req.EncodingOptions)
+	attestationDataBuffer, err := encoding.EncodeAttestationData(preppedAttestationData, &req.EncodingOptions)
 	if err != nil {
 		log.Println("prepareProofData: failed to encode attestation data, err =", err)
 		return nil, err
@@ -114,7 +151,7 @@ func PrepareProofData(statusCode int, attestationData string, timestamp int64, r
 		return nil, errPreparationCriticalError
 	}
 
-	attestationDataLen := len(attestationData)
+	attestationDataLen := len(preppedAttestationData)
 	if attestationDataLen > math.MaxUint16 {
 		log.Println("Warning: cannot create encoded data meta header - attestationDataLen is too long")
 		return nil, errPreparationCriticalError

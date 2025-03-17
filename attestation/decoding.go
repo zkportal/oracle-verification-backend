@@ -2,6 +2,8 @@ package attestation
 
 import (
 	"errors"
+	"strconv"
+	"strings"
 
 	encoding "github.com/zkportal/aleo-oracle-encoding"
 )
@@ -34,6 +36,16 @@ func getBlockSlice(buf []byte, pos, length int) ([]byte, int, error) {
 	return buf[pos : pos+blockAlignedLen], blockAlignedLen, nil
 }
 
+func cleanupDecodedFloat(data string, precision uint) string {
+	num, err := strconv.ParseFloat(data, 64)
+	if err != nil {
+		return data
+	}
+
+	formatted := strconv.FormatFloat(num, 'f', int(precision), 64)
+	return formatted
+}
+
 func DecodeProofData(buf []byte) (*DecodedProofData, error) {
 	if len(buf) < encoding.TARGET_ALIGNMENT*2 {
 		// the buffer doesn't even have a meta header, no need to try to parse anything
@@ -50,8 +62,15 @@ func DecodeProofData(buf []byte) (*DecodedProofData, error) {
 
 	pos += encoding.TARGET_ALIGNMENT * 2
 
+	// int and float use the length of 255 in the header, they are always encoded as 1 block.
+	// otherwise it's a string encoded as 256 blocks
+	attestationDataLen := header.AttestationDataLen
+	if header.AttestationDataLen == 255 {
+		attestationDataLen = encoding.TARGET_ALIGNMENT
+	}
+
 	// get attestation data bytes, parse them later
-	attestationDataBytes, posChange, err := getBlockSlice(buf, pos, header.AttestationDataLen)
+	attestationDataBytes, posChange, err := getBlockSlice(buf, pos, attestationDataLen)
 	if err != nil {
 		return nil, err
 	}
@@ -124,9 +143,15 @@ func DecodeProofData(buf []byte) (*DecodedProofData, error) {
 
 	// now that we have decoding options, we can decode attestation data.
 	// this function removes padding if the encoded value is a string
-	attestationData, err := encoding.DecodeAttestationData(attestationDataBytes, header.AttestationDataLen, encodingOptions)
+	attestationData, err := encoding.DecodeAttestationData(attestationDataBytes, attestationDataLen, encodingOptions)
 	if err != nil {
 		return nil, err
+	}
+
+	if encodingOptions.Value == encoding.ENCODING_OPTION_FLOAT {
+		attestationData = cleanupDecodedFloat(attestationData, encodingOptions.Precision)
+	} else if encodingOptions.Value == encoding.ENCODING_OPTION_STRING {
+		attestationData = strings.TrimRight(attestationData, "\000")
 	}
 
 	// decode request headers

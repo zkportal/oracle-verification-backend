@@ -1,10 +1,10 @@
 package handlers
 
 import (
+	"context"
 	"encoding/base64"
 	"encoding/json"
 	"io"
-	"log"
 	"net/http"
 	"strings"
 
@@ -29,7 +29,9 @@ type VerifyReportsResponse struct {
 	ErrorMessage string `json:"errorMessage,omitempty"`
 }
 
-func respondVerify(w http.ResponseWriter, validReports []int, errors string) {
+func respondVerify(ctx context.Context, w http.ResponseWriter, validReports []int, errors string) {
+	log := GetContextLogger(ctx)
+
 	r := &VerifyReportsResponse{
 		ValidReports: validReports,
 		Success:      true,
@@ -70,7 +72,7 @@ func (vh *verifyHandler) ServeHTTP(w http.ResponseWriter, req *http.Request) {
 		return
 	}
 
-	log.Println("handling /verify")
+	log := GetContextLogger(req.Context())
 
 	body, err := io.ReadAll(req.Body)
 	defer req.Body.Close()
@@ -88,6 +90,7 @@ func (vh *verifyHandler) ServeHTTP(w http.ResponseWriter, req *http.Request) {
 	}
 
 	if len(request.Reports) == 0 {
+		log.Println("no reports to verify")
 		w.WriteHeader(http.StatusBadRequest)
 		return
 	}
@@ -127,5 +130,5 @@ func (vh *verifyHandler) ServeHTTP(w http.ResponseWriter, req *http.Request) {
 		validReports = append(validReports, i)
 	}
 
-	respondVerify(w, validReports, strings.Join(errors, "; "))
+	respondVerify(req.Context(), w, validReports, strings.Join(errors, "; "))
 }
