@@ -1,6 +1,8 @@
 module github.com/zkportal/oracle-verification-backend
 
-go 1.21.12
+go 1.21.4
+
+toolchain go1.21.11
 
 require (
 	github.com/blocky/nitrite v0.0.2-0.20241022160405-a6f5b6da1e50

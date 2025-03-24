@@ -1,28 +1,36 @@
-FROM ubuntu:focal
+ARG egover=1.6.1
 
-WORKDIR /app
+FROM ghcr.io/edgelesssys/ego/build-base:v${egover}
 
-RUN apt update \
-&&  apt install -y --no-install-recommends \
-    wget gnupg ca-certificates build-essential libssl-dev golang-1.21 libcurl4 git curl \
-&&  ln -s /usr/lib/go-1.21/bin/go /usr/local/bin/go
+RUN apt-get update \
+&&  apt-get install -y --no-install-recommends \
+wget gnupg ca-certificates build-essential libssl-dev libcurl4 git curl
 
-# install EGo
+# Configure DCAP
 RUN mkdir -p /etc/apt/keyrings \
 &&  wget -qO- https://download.01.org/intel-sgx/sgx_repo/ubuntu/intel-sgx-deb.key | tee /etc/apt/keyrings/intel-sgx-keyring.asc > /dev/null \
 &&  echo "deb [signed-by=/etc/apt/keyrings/intel-sgx-keyring.asc arch=amd64] https://download.01.org/intel-sgx/sgx_repo/ubuntu focal main" | tee /etc/apt/sources.list.d/intel-sgx.list \
-&&  apt update \
-&&  wget -q https://github.com/edgelesssys/ego/releases/download/v1.5.2/ego_1.5.2_amd64_ubuntu-20.04.deb \
-&&  apt install -y ./ego_1.5.2_amd64_ubuntu-20.04.deb libsgx-dcap-default-qpl
+&&  apt-get update \
+&&  apt-get install -y libsgx-dcap-default-qpl
+
+ARG egover
+# Download and install EGo
+# Use --force-depends to ignore SGX dependencies, which aren't required for building
+RUN egodeb=ego_${egover}_amd64_ubuntu-$(grep -oP 'VERSION_ID="\K[^"]+' /etc/os-release).deb \
+  && wget https://github.com/edgelesssys/ego/releases/download/v${egover}/${egodeb} \
+  && dpkg -i --force-depends ${egodeb}
 
 ENV CGO_CFLAGS=-I/opt/ego/include CGO_LDFLAGS=-L/opt/ego/lib
 
 COPY sgx_default_qcnl.conf /etc/sgx_default_qcnl.conf
 
-ADD . .
+WORKDIR /app
 
-RUN go mod download
+ARG verifier_version=v2.2.0
+RUN git clone -b ${verifier_version} --depth 1 https://github.com/zkportal/oracle-verification-backend .
+
+RUN ego-go build
 
 EXPOSE 8080
 
-ENTRYPOINT ["go", "run", "main.go"]
+ENTRYPOINT ["/app/oracle-verification-backend"]

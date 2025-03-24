@@ -6,6 +6,23 @@ As soon as Aleo is able to verify e.g. ECDSA signatures natively this will becom
 
 Intended to be run outside of an enclave. Use it with [Oracle SDK](https://github.com/zkportal/oracle-sdk) to verify SGX and Nitro reports from the [notarization backend](https://github.com/zkportal/oracle-notarization-backend).
 
+## Running in Docker
+
+Build the image using Dockerfile.
+
+The following build arguments are supported:
+- `egover` - EGo version, 1.6.1 by default
+- `verifier_version` - a version from this repo, v2.2.0 by default
+
+To provide custom configuration, mount the JSON file to `/app/config.json`.
+
+Running this server in Docker still requires a [quote provider](https://docs.edgeless.systems/ego/reference/attest). A PCCS service is expected to be found
+at https://pccs:8081, so make sure that you are running the PCCS container in the same network and with the correct name.
+
+If you choose to copy the built binary to host, you should now that it's linked with OpenSSL 3.
+
+## Running locally
+
 This server requires [EGo](https://docs.edgeless.systems/ego/) and a [quote provider](https://docs.edgeless.systems/ego/reference/attest).
 
 If EGo is installed with snap, run with:
@@ -17,7 +34,7 @@ If EGo is installed from a deb package, run with:
 `CGO_CFLAGS=-I/opt/ego/include CGO_LDFLAGS=-L/opt/ego/lib go run main.go`
 
 Each update on the blockchain carries also the report attesting to the data. Therefore, all data that is required to check the origin and security of the oracle data can be obtained via the blockchain.
-E.g. from `https://explorer.aleo.org/transaction/<transactionId>`
+E.g. from `https://explorer.provable.com/transaction/<transactionId>`
 
 ## Setting up the target enclave measurements
 
