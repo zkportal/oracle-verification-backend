@@ -1,0 +1,52 @@
+# Copied and adjusted from https://github.com/edgelesssys/ego/blob/5cd5702c72a23129665a73c58b2a3ab0b5d9457f/samples/reproducible_build/Dockerfile
+
+ARG oracle_version=v1.7.1
+ARG egover=1.6.1
+
+# Provides the source code, built from Dockerfile in this repository
+FROM oracle-notarization-backend-src:${oracle_version} AS source
+
+# Use this to build an executable for Ubuntu 22.04
+FROM ghcr.io/edgelesssys/ego/build-base:v${egover} AS build
+
+# Use this to build an executable for Ubuntu 20.04
+# FROM ghcr.io/edgelesssys/ego/build-base-focal:v${egover} AS build
+
+ARG egover
+
+# Install required packages
+# These are cached in the build-base image. Don't run `apt-get update` or
+# you may get other package versions and the build won't be reproducible.
+RUN apt-get install -y --no-install-recommends \
+  build-essential \
+  ca-certificates \
+  git \
+  wget
+
+# Download and install further requirements (if any)
+#
+# Make sure that these stay the same, e.g., don't use "latest", but fixed versions.
+#
+# Avoid installing packages via apt here. This may change the version of already
+# installed dependencies and may influence the final binary. If not using apt isn't
+# feasible, consider building a Docker image that gathers all required apt packages
+# and serves as a stable base.
+
+# Download and install EGo
+# Use --force-depends to ignore SGX dependencies, which aren't required for building
+RUN egodeb=ego_${egover}_amd64_ubuntu-$(grep -oP 'VERSION_ID="\K[^"]+' /etc/os-release).deb \
+  && wget https://github.com/edgelesssys/ego/releases/download/v${egover}/${egodeb} \
+  && dpkg -i --force-depends ${egodeb}
+
+# Build your app
+WORKDIR /app
+COPY --from=source /app .
+RUN --mount=type=secret,id=signingkey,dst=private.pem,required=true ego-go build -trimpath -o oracle-notarization-backend && \
+    ego sign oracle-notarization-backend && \
+    ego uniqueid oracle-notarization-backend > uniqueid.txt
+
+ENTRYPOINT ["/app/oracle-notarization-backend"]
+
+# Use the export target if you just want to use Docker to build your app and then export it
+FROM scratch AS export
+COPY --from=build /app/oracle-notarization-backend /app/uniqueid.txt /

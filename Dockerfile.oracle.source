@@ -1,0 +1,9 @@
+FROM alpine:3.19.1
+
+ARG VERSION=main
+
+RUN apk add --no-cache git ca-certificates
+
+WORKDIR /app
+
+RUN git clone -b ${VERSION} --depth 1 https://github.com/zkportal/oracle-notarization-backend /app
